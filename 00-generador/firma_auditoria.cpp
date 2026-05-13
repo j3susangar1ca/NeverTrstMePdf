@@ -19,6 +19,7 @@
 #include <string.h>
 #include <vector> // Para colecciones dinámicas
 #include <windows.h>
+#include <string>
 
 // --- ENUMERACIONES Y TIPOS ---
 enum class PEArchitecture { UNKNOWN, PE32, PE64 };
