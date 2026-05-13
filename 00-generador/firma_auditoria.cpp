@@ -366,19 +366,17 @@ private:
   }
 
   DWORD CalculateFinalSize() {
-    DWORD headers_size = GetOptionalHeaderField<DWORD>(
-        offsetof(IMAGE_OPTIONAL_HEADER32, SizeOfHeaders));
-    DWORD last_raw_end = CalculateOverlayOffset();
-    DWORD resources_size =
-        AlignValue(static_cast<DWORD>(resource_data_.size()),
-                   GetOptionalHeaderField<DWORD>(
-                       offsetof(IMAGE_OPTIONAL_HEADER32, FileAlignment)));
+    DWORD max_raw_end = 0;
+    for (auto &sec : sections_) {
+      DWORD sec_end = sec.header.PointerToRawData + sec.header.SizeOfRawData;
+      if (sec_end > max_raw_end)
+        max_raw_end = sec_end;
+    }
+
+    DWORD cert_offset = AlignValue(max_raw_end, 8);
     DWORD cert_size_aligned =
         AlignValue(static_cast<DWORD>(certificate_data_.size()), 8);
-    return AlignValue(headers_size,
-                      GetOptionalHeaderField<DWORD>(
-                          offsetof(IMAGE_OPTIONAL_HEADER32, FileAlignment))) +
-           last_raw_end + resources_size + cert_size_aligned;
+    return cert_offset + cert_size_aligned;
   }
 };
 
