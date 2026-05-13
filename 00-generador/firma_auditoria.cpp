@@ -437,7 +437,7 @@ int main(int argc, char *argv[]) {
   builder.AddCertificate(cert_data);
   auto final_buffer = builder.Build();
 
-  if (PEMemoryManager::WriteBufferToFile(argv[3], final_buffer)) {
+  if (PEMemoryManager::WriteBufferToFile(std::string(argv[3]), final_buffer)) {
     printf("[+] Binario camuflado guardado como: %s\n", argv[3]);
   } else {
     printf("Error al escribir el archivo de salida.\n");

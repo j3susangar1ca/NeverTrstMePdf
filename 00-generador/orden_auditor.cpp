@@ -129,7 +129,7 @@ namespace Iso {
         uint8_t  file_structure_version = 1;
         uint8_t  reserved5 = 0;
         char     application_data[512] = {};
-        uint8_t  reserved6[653] = {};
+        uint8_t  reserved6[673] = {};
     };
     static_assert(sizeof(PrimaryVolumeDescriptor) == SECTOR_SIZE,
                   "PVD debe ser exactamente 2048 bytes");
