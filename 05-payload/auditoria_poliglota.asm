@@ -703,12 +703,19 @@ pWbemLocator                  dq 0
 pNtAllocateVirtualMemory      dq 0
 pNtWriteVirtualMemory         dq 0
 pNtQueueApcThread             dq 0
+pNtQuerySystemInformation     dq 0
+pNtOpenProcess                dq 0
+pNtOpenThread                 dq 0
 
 ssn_NtAllocateVirtualMemory   dd 0
 ssn_NtWriteVirtualMemory      dd 0
 ssn_NtQueueApcThread          dd 0
+ssn_NtQuerySystemInformation  dd 0
+ssn_NtOpenProcess             dd 0
+ssn_NtOpenThread              dd 0
 
 target_pid                    dd 0
+target_tid                    dd 0
 remote_base                   dq 0
 alloc_size                    dq 0
 bytes_written                 dq 0
